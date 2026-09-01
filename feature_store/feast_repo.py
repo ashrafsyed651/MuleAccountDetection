@@ -32,6 +32,10 @@ account_graph_features = FeatureView(
     schema=[
         Field(name="transaction_volume_30d", dtype=Float32),
         Field(name="node_degree", dtype=Int64),
+        Field(name="scc_community_id", dtype=Int64),
+        Field(name="louvain_community_id", dtype=Int64),
+        Field(name="tda_cycle_count", dtype=Int64),
+        Field(name="tda_h1_persistence", dtype=Float32),
     ],
     online=True,
     source=push_source,

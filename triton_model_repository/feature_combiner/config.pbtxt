@@ -1,0 +1,24 @@
+name: "feature_combiner"
+backend: "python"
+max_batch_size: 128
+
+input [
+  {
+    name: "FEAST_FEATURES"
+    data_type: TYPE_FP32
+    dims: [ 6 ]
+  },
+  {
+    name: "GNN_EMBEDDING"
+    data_type: TYPE_FP32
+    dims: [ -1, 64 ]
+  }
+]
+
+output [
+  {
+    name: "COMBINED_FEATURES"
+    data_type: TYPE_FP32
+    dims: [ -1, 70 ]
+  }
+]

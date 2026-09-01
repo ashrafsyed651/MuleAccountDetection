@@ -1,0 +1,6 @@
+neo4j==5.28.2
+networkx==3.2.1
+numpy==1.26.4
+ripser==0.6.12
+persim==0.3.7
+matplotlib==3.8.4

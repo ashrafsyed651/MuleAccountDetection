@@ -1,0 +1,31 @@
+name: "xgb_classifier"
+backend: "fil"
+max_batch_size: 128
+
+input [
+  {
+    name: "input__0"
+    data_type: TYPE_FP32
+    # 6 Feast features + 64 GNN embedding dimensions = 70
+    dims: [ 70 ]
+  }
+]
+
+output [
+  {
+    name: "output__0"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+parameters [
+  {
+    key: "model_type"
+    value: { string_value: "xgboost_json" }
+  },
+  {
+    key: "output_class"
+    value: { string_value: "true" }
+  }
+]
