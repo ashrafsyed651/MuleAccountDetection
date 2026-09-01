@@ -1,17 +1,22 @@
 {
   "name": "neo4j-cdc-source",
   "config": {
-    "connector.class": "streams.kafka.connect.source.Neo4jSourceConnector",
-    "topic": "graph-mutations-log",
-    "neo4j.server.uri": "bolt://neo4j:7687",
+    "connector.class": "org.neo4j.connectors.kafka.source.Neo4jConnector",
+    "tasks.max": "1",
+    "neo4j.uri": "neo4j://neo4j:7687",
+    "neo4j.database": "neo4j",
     "neo4j.authentication.type": "BASIC",
     "neo4j.authentication.basic.username": "neo4j",
     "neo4j.authentication.basic.password": "password",
-    "neo4j.source.query": "MATCH (a:Account) RETURN a.id AS account_id, a.account_number AS account_number, a.balance AS balance",
-    "neo4j.streaming.poll.interval.msecs": "1000",
+    "neo4j.source-strategy": "CDC",
+    "neo4j.start-from": "NOW",
+    "neo4j.cdc.poll-interval": "1s",
+    "neo4j.cdc.poll-duration": "5s",
+    "neo4j.cdc.topic.graph-mutations-log.key-strategy": "SKIP",
+    "neo4j.cdc.topic.graph-mutations-log.patterns": "(:Account),(:Account)-[:TRANSFER]->(:Account)",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter.schemas.enable": false,
+    "value.converter.schemas.enable": true,
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "key.converter.schemas.enable": false
+    "key.converter.schemas.enable": true
   }
 }

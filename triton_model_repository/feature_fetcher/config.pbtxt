@@ -1,0 +1,19 @@
+name: "feature_fetcher"
+backend: "python"
+max_batch_size: 128
+
+input [
+  {
+    name: "ACCOUNT_ID"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  }
+]
+
+output [
+  {
+    name: "FEAST_FEATURES"
+    data_type: TYPE_FP32
+    dims: [ 6 ]
+  }
+]

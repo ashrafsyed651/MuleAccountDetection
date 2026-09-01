@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   kafka:
     image: confluentinc/cp-kafka:7.4.0
@@ -22,6 +20,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       
       # SSL / mTLS Configuration
       KAFKA_SSL_KEYSTORE_FILENAME: broker.keystore.jks
@@ -84,18 +83,43 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/password
       - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
-      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_PLUGINS=["apoc", "graph-data-science"]
       - NEO4J_server_config_strict__validation_enabled=false
+      - NEO4J_dbms_security_procedures_unrestricted=gds.*
+      - NEO4J_dbms_security_procedures_allowlist=gds.*,apoc.*,db.cdc.*
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p password 'RETURN 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  neo4j-init:
+    image: neo4j:5.13.0-enterprise
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    volumes:
+      - ./graph_db:/scripts:ro,z
+    entrypoint: ["bash", "-ec"]
+    command:
+      - >-
+        cypher-shell -a bolt://neo4j:7687 -u neo4j -p password -d system
+        "ALTER DATABASE neo4j SET OPTION txLogEnrichment 'FULL';";
+        cypher-shell -a bolt://neo4j:7687 -u neo4j -p password -d neo4j -f /scripts/schema.cypher
 
   kafka-connect:
     image: confluentinc/cp-kafka-connect:7.4.0
     container_name: kafka-connect
     depends_on:
-      - kafka
-      - neo4j
+      kafka:
+        condition: service_started
+      neo4j-init:
+        condition: service_completed_successfully
     ports:
       - "8083:8083"
     environment:
@@ -117,8 +141,23 @@ services:
       - -c
       - |
         echo "Installing Neo4j Kafka Connector..."
-        confluent-hub install --no-prompt neo4j/kafka-connect-neo4j:5.0.0
+        confluent-hub install --no-prompt neo4j/kafka-connect-neo4j:5.1.1
         /etc/confluent/docker/run
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  connect-init:
+    image: python:3.11-slim
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./cdc:/config:ro,z
+    working_dir: /config
+    command: ["python", "register_connector.py"]
 
   redis:
     image: redis:7
@@ -127,10 +166,13 @@ services:
       - "6379:6379"
 
   feast:
-    image: python:3.9-slim
+    build: ./feature_store
     container_name: feast
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      connect-init:
+        condition: service_completed_successfully
     volumes:
       - ./feature_store:/feature_store:rw,z
     working_dir: /feature_store
@@ -138,9 +180,25 @@ services:
       - bash
       - -c
       - |
-        pip install feast feast[redis] kafka-python pandas
+        python bootstrap_offline_store.py
         feast apply
+        python verify_registry.py
+        echo "Feast registry ready, starting CDC consumer..."
         python consumer.py
+
+  graph-analytics:
+    build: ./graph_db
+    container_name: graph-analytics
+    depends_on:
+      connect-init:
+        condition: service_completed_successfully
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: password
+    volumes:
+      - ./artifacts:/artifacts:rw,z
+    command: ["python", "analytics_worker.py", "--interval-seconds", "60", "--limit", "500"]
 
 volumes:
   neo4j-data:
