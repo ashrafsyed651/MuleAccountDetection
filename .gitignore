@@ -16,5 +16,5 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Architecture Decisions Log
-decision.md
+# decision.md
 

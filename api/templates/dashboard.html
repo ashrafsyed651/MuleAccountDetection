@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mule Detection - Premium Analyst Workbench</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0b0f19;
+            --panel-bg: rgba(15, 23, 42, 0.85);
+            --accent-red: #f43f5e;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(51, 65, 85, 0.5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; }
+        
+        /* Layout */
+        .sidebar { width: 420px; height: 100vh; background: var(--panel-bg); backdrop-filter: blur(12px); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; overflow-y: auto; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+        .main-content { flex: 1; position: relative; height: 100vh; }
+        
+        /* Sidebar Components */
+        .header { padding: 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        .header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; background: linear-gradient(90deg, #60a5fa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header p { font-size: 12px; color: var(--text-muted); }
+        
+        .section { padding: 20px 24px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; max-height: 400px; overflow-y: auto; }
+        .section-title { font-size: 14px; font-weight: 600; color: #cbd5e1; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .controls { display: flex; flex-direction: column; gap: 12px; }
+        .controls label { font-size: 12px; color: var(--text-muted); }
+        .account-select { background: #1e293b; border: 1px solid var(--accent-blue); color: white; padding: 10px; border-radius: 8px; font-weight: 500; cursor: pointer; width: 100%; outline: none; }
+        .account-select:focus { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); }
+        
+        .inspector-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed rgba(51, 65, 85, 0.5); font-size: 13px; }
+        .inspector-row:last-child { border-bottom: none; }
+        .inspector-row span { color: var(--text-muted); }
+        .inspector-row strong { color: #f8fafc; font-weight: 600; text-align: right; }
+        
+        .badges { display: flex; gap: 8px; margin-top: 12px; }
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .badge-danger { background-color: rgba(244, 63, 94, 0.2); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .badge-success { background-color: rgba(16, 185, 129, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        
+        textarea { width: 100%; height: 80px; background: #1e293b; border: 1px solid var(--border-color); border-radius: 8px; color: white; padding: 12px; font-size: 13px; margin-top: 8px; resize: none; outline: none; }
+        textarea:focus { border-color: var(--accent-blue); }
+        
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-tp { background: linear-gradient(135deg, #e11d48, #be123c); color: white; box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3); }
+        .btn-tp:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(225, 29, 72, 0.4); }
+        .btn-fp { background: #334155; color: white; }
+        .btn-fp:hover { background: #475569; }
+        
+        #statusAlert { margin-top: 12px; padding: 12px; border-radius: 8px; font-size: 13px; display: none; text-align: center; font-weight: 500; }
+        
+        /* Graph Area */
+        #networkGraph { width: 100%; height: 100%; background: radial-gradient(circle at center, #1e293b 0%, #0b0f19 100%); outline: none; }
+        
+        /* Legend overlays */
+        .graph-overlay { position: absolute; top: 24px; right: 24px; background: var(--panel-bg); backdrop-filter: blur(10px); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 8px 32px rgba(0,0,0,0.4); z-index: 5; }
+        .legend-title { font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 12px; text-transform: uppercase; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: var(--text-muted); }
+        .legend-item:last-child { margin-bottom: 0; }
+        .legend-color { width: 12px; height: 12px; border-radius: 50%; }
+        
+        .neo4j-link { position: absolute; bottom: 24px; right: 24px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; padding: 10px 16px; border-radius: 30px; font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid rgba(59, 130, 246, 0.4); backdrop-filter: blur(10px); z-index: 5; transition: all 0.2s; }
+        .neo4j-link:hover { background: rgba(59, 130, 246, 0.3); color: white; transform: translateY(-2px); }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="header">
+            <h1>Mule Detection Pro</h1>
+            <p>Live Database Visualization & Active Learning</p>
+            <div class="badges">
+                <div class="badge badge-danger">HIGH RISK ALERT</div>
+                <div class="badge badge-success">LIVE SYNC</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="controls">
+                <label>Target Investigation Entity</label>
+                <select class="account-select" id="accountSelect" onchange="onAccountChange()">
+                    <option>Loading accounts...</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Node Inspector</div>
+            <div class="inspector-row"><span>Entity ID:</span><strong id="inspId">-</strong></div>
+            <div class="inspector-row"><span>Entity Type:</span><strong id="inspType">-</strong></div>
+            <div class="inspector-row"><span>Risk Topology:</span><strong id="inspRisk" style="color: #f59e0b;">-</strong></div>
+        </div>
+
+        <div class="section" style="max-height: 280px;">
+            <div class="section-title">AI Explainer (SHAP)</div>
+            <canvas id="shapChart" height="180"></canvas>
+        </div>
+
+        <div class="section" style="border-bottom: none;">
+            <div class="section-title">Analyst Verdict</div>
+            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">Submitting a verdict pushes to Kafka and triggers XGBoost retraining.</p>
+            <textarea id="analystNotes" placeholder="Enter investigation notes (e.g. 'Confirmed circular topology layer...')..."></textarea>
+            
+            <div class="btn-group">
+                <button class="btn-tp" onclick="submitDisposition('TRUE_POSITIVE')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Flag as True Positive (Fraud)
+                </button>
+                <button class="btn-fp" onclick="submitDisposition('FALSE_POSITIVE')">
+                    Dismiss (False Positive)
+                </button>
+            </div>
+            <div id="statusAlert"></div>
+        </div>
+    </div>
+
+    <!-- MAIN GRAPH AREA -->
+    <div class="main-content">
+        <div id="networkGraph"></div>
+        
+        <div class="graph-overlay">
+            <div class="legend-title">Entity Legend</div>
+            <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div> Known Criminal / Mule</div>
+            <div class="legend-item"><div class="legend-color" style="background: #a855f7;"></div> Shell Company</div>
+            <div class="legend-item"><div class="legend-color" style="background: #10b981;"></div> Bank Institution</div>
+            <div class="legend-item"><div class="legend-color" style="background: #3b82f6;"></div> Beneficiary</div>
+            <div class="legend-item"><div class="legend-color" style="background: #64748b;"></div> Normal Account</div>
+        </div>
+        
+        <a href="http://localhost:7474" target="_blank" class="neo4j-link">
+            Explore Raw DB in Neo4j Browser ↗
+        </a>
+    </div>
+
+    <script>
+        let currentAccount = "";
+        let currentAlertId = "ALT-101";
+        let shapChartInstance = null;
+        let networkInstance = null;
+        let graphNodes = [];
+
+        async function initPage() {
+            try {
+                // Populate account dropdown
+                const accRes = await fetch('/api/accounts');
+                const accounts = await accRes.json();
+                const sel = document.getElementById('accountSelect');
+                sel.innerHTML = '';
+                accounts.forEach(acc => {
+                    const opt = document.createElement('option');
+                    opt.value = acc;
+                    opt.textContent = acc;
+                    sel.appendChild(opt);
+                });
+                
+                if (accounts.length > 0) {
+                    // Try to pre-select a known fraud node if exists, else first
+                    currentAccount = accounts.find(a => a.includes('FRAUD') || a.includes('Mule')) || accounts[0];
+                    sel.value = currentAccount;
+                }
+                
+                await loadLiveGraph();
+                await loadExplanation();
+
+            } catch (err) {
+                console.error("Init page error:", err);
+            }
+        }
+
+        async function onAccountChange() {
+            currentAccount = document.getElementById('accountSelect').value;
+            document.getElementById('inspId').textContent = currentAccount;
+            
+            // Find type from local graph state
+            const nodeData = graphNodes.find(n => n.id === currentAccount);
+            if (nodeData) {
+                document.getElementById('inspType').textContent = nodeData.type || 'Account';
+                document.getElementById('inspType').style.color = getEntityColor(nodeData.type);
+            }
+            
+            await loadExplanation();
+            if (networkInstance) {
+                networkInstance.selectNodes([currentAccount]);
+                networkInstance.focus(currentAccount, { scale: 1.2, animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+            }
+        }
+        
+        function getEntityColor(type) {
+            if (!type) return '#64748b';
+            if (type.includes('Criminal') || type.includes('Mule') || type.includes('FRAUD')) return '#ef4444';
+            if (type.includes('Shell')) return '#a855f7';
+            if (type.includes('Bank')) return '#10b981';
+            if (type.includes('Beneficiary')) return '#3b82f6';
+            return '#64748b'; // Normal
+        }
+
+        async function loadLiveGraph() {
+            try {
+                const res = await fetch('/api/graph/full');
+                const data = await res.json();
+                graphNodes = data.nodes;
+                
+                const container = document.getElementById('networkGraph');
+                
+                const nodesArray = data.nodes.map(n => {
+                    let type = n.type || 'Account';
+                    if (n.id.includes('FRAUD') || n.id.includes('Mule') || n.id.includes('Criminal')) type = 'Criminal/Mule';
+                    
+                    const colorHex = getEntityColor(type);
+                    
+                    return {
+                        id: n.id,
+                        label: n.id,
+                        shape: 'dot',
+                        size: 16,
+                        type: type,
+                        color: {
+                            background: colorHex,
+                            border: '#ffffff',
+                            borderWidth: 1.5,
+                            highlight: { background: '#f59e0b', border: '#ffffff', borderWidth: 3 }
+                        },
+                        font: { color: '#e2e8f0', size: 12, face: 'Inter', strokeWidth: 3, strokeColor: '#0b0f19' }
+                    };
+                });
+
+                const edgesArray = data.edges.map(e => {
+                    // Format amounts cleanly like $12,345
+                    const amtStr = e.amount ? `$${e.amount.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}` : '';
+                    return {
+                        from: e.source,
+                        to: e.target,
+                        label: amtStr,
+                        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+                        color: { color: 'rgba(96, 165, 250, 0.4)', highlight: '#f59e0b' },
+                        font: { color: '#94a3b8', size: 10, align: 'top', strokeWidth: 2, strokeColor: '#0b0f19' },
+                        width: 1.5,
+                        selectionWidth: 3,
+                        smooth: { type: 'continuous' }
+                    };
+                });
+
+                const graphData = {
+                    nodes: new vis.DataSet(nodesArray),
+                    edges: new vis.DataSet(edgesArray)
+                };
+
+                const options = {
+                    physics: {
+                        forceAtlas2Based: {
+                            gravitationalConstant: -120,
+                            centralGravity: 0.01,
+                            springLength: 100,
+                            springConstant: 0.04,
+                            damping: 0.4,
+                            avoidOverlap: 0.2
+                        },
+                        solver: 'forceAtlas2Based',
+                        stabilization: { iterations: 150 }
+                    },
+                    interaction: { 
+                        hover: true, 
+                        zoomView: true, 
+                        dragView: true,
+                        hideEdgesOnDrag: true
+                    },
+                    layout: { improvedLayout: true }
+                };
+
+                networkInstance = new vis.Network(container, graphData, options);
+
+                networkInstance.on("click", function (params) {
+                    if (params.nodes.length > 0) {
+                        const clickedNode = params.nodes[0];
+                        document.getElementById('accountSelect').value = clickedNode;
+                        onAccountChange();
+                    }
+                });
+                
+                // Set initial inspector state
+                onAccountChange();
+
+            } catch (err) {
+                console.error("Error loading live Neo4j graph:", err);
+            }
+        }
+
+        async function loadExplanation() {
+            try {
+                const res = await fetch(`/api/alerts/${currentAlertId}/explanation?account_id=${currentAccount}&fraud_probability=0.85`);
+                const data = await res.json();
+                
+                // Update Risk text based on SHAP
+                const highRiskDriver = data.shap_top_drivers.find(d => d.shap_value > 0);
+                if (highRiskDriver) {
+                    let topologyMsg = highRiskDriver.feature.replace(/_/g, ' ').toUpperCase();
+                    document.getElementById('inspRisk').textContent = topologyMsg;
+                    document.getElementById('inspRisk').style.color = '#f59e0b';
+                } else {
+                    document.getElementById('inspRisk').textContent = 'NORMAL EXPECTED FLOW';
+                    document.getElementById('inspRisk').style.color = '#10b981';
+                }
+                
+                const labels = data.shap_top_drivers.map(d => d.feature.replace(/_/g, ' '));
+                const values = data.shap_top_drivers.map(d => d.shap_value * 100);
+                
+                const ctx = document.getElementById('shapChart').getContext('2d');
+                if (shapChartInstance) { shapChartInstance.destroy(); }
+                
+                Chart.defaults.color = '#94a3b8';
+                Chart.defaults.font.family = 'Inter';
+                
+                shapChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'SHAP Risk Contribution (%)',
+                            data: values,
+                            backgroundColor: values.map(v => v > 0 ? 'rgba(244, 63, 94, 0.8)' : 'rgba(16, 185, 129, 0.8)'),
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { 
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.5)' } }, 
+                            y: { grid: { display: false }, ticks: { font: { size: 10 } } } 
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("Error loading explanation:", err);
+            }
+        }
+
+        async function submitDisposition(status) {
+            const notes = document.getElementById('analystNotes').value;
+            const alertBox = document.getElementById('statusAlert');
+            
+            try {
+                const res = await fetch(`/api/alerts/${currentAlertId}/disposition`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: status,
+                        analyst_notes: notes,
+                        account_id: currentAccount
+                    })
+                });
+                
+                const data = await res.json();
+                
+                alertBox.style.display = 'block';
+                if (res.ok) {
+                    alertBox.style.background = status === 'TRUE_POSITIVE' ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)';
+                    alertBox.style.color = status === 'TRUE_POSITIVE' ? '#f43f5e' : '#10b981';
+                    alertBox.style.border = `1px solid ${status === 'TRUE_POSITIVE' ? 'rgba(244, 63, 94, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`;
+                    alertBox.innerHTML = `✅ Disposition saved to Kafka:<br/><strong>${data.topic}</strong>`;
+                } else {
+                    alertBox.style.background = 'rgba(244, 63, 94, 0.1)';
+                    alertBox.style.color = '#f43f5e';
+                    alertBox.innerHTML = `❌ Error: ${data.detail || 'Submission failed'}`;
+                }
+                
+                setTimeout(() => { alertBox.style.display = 'none'; }, 4000);
+            } catch (err) {
+                console.error("Submission error:", err);
+            }
+        }
+
+        window.onload = initPage;
+    </script>
+</body>
+</html>
