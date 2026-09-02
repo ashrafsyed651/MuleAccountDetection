@@ -91,9 +91,11 @@ class TestFeedbackAPI:
         return TestClient(app)
 
     def test_health_check(self, client):
+        """GET / serves the analyst dashboard HTML page."""
         response = client.get("/")
         assert response.status_code == 200
-        assert response.json()["status"] == "HEALTHY"
+        assert "text/html" in response.headers["content-type"]
+        assert "Mule Detection" in response.text
 
     def test_get_explanation_report(self, client):
         response = client.get("/api/alerts/ALT-123/explanation?account_id=Acc99&fraud_probability=0.92")
